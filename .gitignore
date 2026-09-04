@@ -1,0 +1,13 @@
+.venv/
+.uv-cache/
+.uv-tools/
+.uv-tools-bin/
+.test-tmp/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite
+.env

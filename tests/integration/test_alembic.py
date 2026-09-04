@@ -16,7 +16,11 @@ def test_alembic_upgrade_creates_exact_story_zero_tables(tmp_path) -> None:
 
     command.upgrade(config, "head")
 
-    tables = set(inspect(create_engine(f"sqlite:///{database.as_posix()}")).get_table_names())
+    engine = create_engine(f"sqlite:///{database.as_posix()}")
+    try:
+        tables = set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
     assert tables == {
         "alembic_version",
         "episodes",
@@ -25,4 +29,3 @@ def test_alembic_upgrade_creates_exact_story_zero_tables(tmp_path) -> None:
         "cognitive_objects",
         "cognitive_relations",
     }
-

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cogito-harness"
+version = "0.1.0"
+description = "Evidence-backed cognitive harness kernel"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { file = "LICENSE" }
+dependencies = [
+  "alembic>=1.16,<2",
+  "pydantic>=2.12,<3",
+  "rich>=14,<15",
+  "sqlalchemy>=2.0,<3",
+  "typer>=0.16,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9,<10",
+  "pytest-cov>=7,<8",
+]
+
+[project.scripts]
+cogito = "cogito.interfaces.cli.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cogito"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"
+testpaths = ["tests"]
+markers = [
+  "scenario: deterministic fake-runtime scenarios",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["cogito"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+

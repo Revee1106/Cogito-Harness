@@ -169,11 +169,6 @@ def test_fact_hypothesis_gap_and_evidence_validation() -> None:
             updated_at=NOW,
         )
     with pytest.raises(ValidationError):
-        gap.model_copy(update={"status": "DONE"}).model_validate(
-            gap.model_copy(update={"status": "DONE"}).model_dump()
-        )
+        InformationGap.model_validate({**gap.model_dump(), "status": "DONE"})
     with pytest.raises(ValidationError):
-        evidence.model_copy(update={"target_type": "MEMORY"}).model_validate(
-            evidence.model_copy(update={"target_type": "MEMORY"}).model_dump()
-        )
-
+        EvidenceLink.model_validate({**evidence.model_dump(), "target_type": "MEMORY"})

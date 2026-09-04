@@ -1,0 +1,2 @@
+"""Committed cognitive domain objects."""
+

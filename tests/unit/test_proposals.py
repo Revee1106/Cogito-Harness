@@ -41,12 +41,11 @@ def test_all_proposals_omit_database_identity_and_timestamps() -> None:
     )
 
     for proposal in proposals:
-        assert "id" not in proposal.model_fields
-        assert "created_at" not in proposal.model_fields
+        assert "id" not in type(proposal).model_fields
+        assert "created_at" not in type(proposal).model_fields
 
 
 def test_proposals_are_not_committed_domain_objects() -> None:
     assert not issubclass(ObservedPropositionProposal, ObservedProposition)
     assert not issubclass(EvidenceLinkProposal, EvidenceLink)
     assert not issubclass(HypothesisProposal, Hypothesis)
-
