@@ -201,7 +201,7 @@ def test_update_cannot_change_object_type_and_rolls_back_transaction(tmp_path) -
         id=FactId("fact-1"),
         episode_id=episode.id,
         statement="configured DB port is 3306",
-        evidence_refs=(),
+        evidence_refs=(EvidenceLinkId("evidence-for-fact"),),
         status=FactStatus.ACTIVE,
         created_at=NOW,
     )
