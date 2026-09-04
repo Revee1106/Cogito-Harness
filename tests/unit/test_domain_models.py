@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from cogito.domain.enums import (
     FactStatus,
+    FactBasis,
     GapStatus,
     HypothesisStatus,
     PropositionStatus,
@@ -121,6 +122,7 @@ def test_fact_hypothesis_gap_and_evidence_validation() -> None:
         id=FactId("00000000-0000-0000-0000-000000000004"),
         episode_id=EPISODE_ID,
         statement="configured DB port is 3306",
+        basis=FactBasis.ARTIFACT_CONTENT,
         evidence_refs=(EVIDENCE_LINK_ID,),
         status=FactStatus.ACTIVE,
         created_at=NOW,

@@ -38,7 +38,8 @@ from cogito.domain.models.fact import Fact
 from cogito.domain.models.gap import InformationGap
 from cogito.domain.models.goal import GoalContract
 from cogito.domain.models.hypothesis import Hypothesis
-from cogito.domain.models.observation import Observation
+from cogito.domain.models.observation import Observation, ObservedProposition
+from cogito.domain.policies.transaction import CognitiveTransactionValidator
 from cogito.ports.cognitive_store import (
     CognitiveStoreError,
     CognitiveVersionConflict,
@@ -117,6 +118,9 @@ class SQLiteCognitiveStore:
             objects = tuple(object_from_record(item) for item in records)
 
         facts = tuple(item for item in objects if isinstance(item, Fact))
+        propositions = tuple(
+            item for item in objects if isinstance(item, ObservedProposition)
+        )
         hypotheses = tuple(item for item in objects if isinstance(item, Hypothesis))
         gaps = tuple(item for item in objects if isinstance(item, InformationGap))
         focused = next((item.id for item in gaps if item.status is GapStatus.FOCUSED), None)
@@ -125,6 +129,7 @@ class SQLiteCognitiveStore:
         return EpisodeState(
             episode=episode,
             goal_contract=goal,
+            observed_propositions=propositions,
             facts=facts,
             hypotheses=hypotheses,
             gaps=gaps,
@@ -145,6 +150,27 @@ class SQLiteCognitiveStore:
                         f"base version {transaction.base_version} does not match "
                         f"current version {episode.cognitive_version}"
                     )
+                object_records = session.scalars(
+                    select(CognitiveObjectRecord).where(
+                        CognitiveObjectRecord.episode_id
+                        == str(transaction.episode_id)
+                    )
+                ).all()
+                relation_records = session.scalars(
+                    select(CognitiveRelationRecord).where(
+                        CognitiveRelationRecord.episode_id
+                        == str(transaction.episode_id)
+                    )
+                ).all()
+                CognitiveTransactionValidator().validate_or_raise(
+                    transaction,
+                    current_objects=tuple(
+                        object_from_record(item) for item in object_records
+                    ),
+                    current_relations=tuple(
+                        relation_from_record(item) for item in relation_records
+                    ),
+                )
                 self._append_events(session, transaction)
                 self._apply_object_changes(session, transaction)
                 self._apply_relation_changes(session, transaction)

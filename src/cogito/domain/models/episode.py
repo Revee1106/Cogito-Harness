@@ -12,7 +12,7 @@ from cogito.domain.models.fact import Fact
 from cogito.domain.models.gap import InformationGap
 from cogito.domain.models.goal import GoalContract
 from cogito.domain.models.hypothesis import Hypothesis
-from cogito.domain.models.observation import Observation
+from cogito.domain.models.observation import Observation, ObservedProposition
 
 
 class Episode(DomainModel):
@@ -29,6 +29,7 @@ class EpisodeState(DomainModel):
 
     episode: Episode
     goal_contract: GoalContract | None = None
+    observed_propositions: tuple[ObservedProposition, ...] = ()
     facts: tuple[Fact, ...] = ()
     hypotheses: tuple[Hypothesis, ...] = ()
     gaps: tuple[InformationGap, ...] = ()

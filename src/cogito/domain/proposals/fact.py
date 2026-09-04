@@ -5,15 +5,17 @@ from typing import Annotated, Any
 
 from pydantic import Field, model_validator
 
-from cogito.domain.base import DomainModel
-from cogito.domain.enums import FactBasis, FactStatus
-from cogito.domain.ids import EpisodeId, EvidenceLinkId, FactId
+from cogito.domain.base import ProposalModel
+from cogito.domain.enums import FactBasis, SemanticEntailment
+from cogito.domain.ids import PropositionId
 
 
-class Fact(DomainModel):
-    id: FactId
-    episode_id: EpisodeId
-    statement: Annotated[str, Field(min_length=1)]
+NonEmpty = Annotated[str, Field(min_length=1)]
+
+
+class FactProposal(ProposalModel):
+    proposition_id: PropositionId
+    statement: NonEmpty
     subject: str | None = None
     predicate: str | None = None
     value: Any | None = None
@@ -21,12 +23,10 @@ class Fact(DomainModel):
     valid_from: datetime | None = None
     valid_to: datetime | None = None
     basis: FactBasis
-    evidence_refs: tuple[EvidenceLinkId, ...] = ()
-    status: FactStatus = FactStatus.ACTIVE
-    created_at: datetime
+    semantic_entailment: SemanticEntailment
 
     @model_validator(mode="after")
-    def temporal_range_is_ordered(self) -> "Fact":
+    def temporal_range_is_ordered(self) -> "FactProposal":
         if (
             self.valid_from is not None
             and self.valid_to is not None

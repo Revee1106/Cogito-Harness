@@ -13,6 +13,7 @@ from cogito.domain.enums import (
     EpisodeStatus,
     EvidenceRelation,
     EventType,
+    FactBasis,
     FactStatus,
     HypothesisStatus,
 )
@@ -37,7 +38,8 @@ from cogito.domain.models.evidence import EvidenceLink
 from cogito.domain.models.fact import Fact
 from cogito.domain.models.goal import AcceptanceCriterion, GoalContract
 from cogito.domain.models.hypothesis import Hypothesis
-from cogito.domain.models.observation import Observation
+from cogito.domain.models.observation import Observation, ObservedProposition
+from cogito.domain.policies.transaction import CognitiveTransactionValidationError
 from cogito.ports.cognitive_store import (
     CognitiveStoreError,
     CognitiveVersionConflict,
@@ -197,10 +199,29 @@ def test_event_order_is_traceable_and_append_only(tmp_path) -> None:
 def test_update_cannot_change_object_type_and_rolls_back_transaction(tmp_path) -> None:
     store = make_store(tmp_path)
     episode = make_episode()
+    proposition = ObservedProposition(
+        id=PropositionId("proposition-1"),
+        episode_id=episode.id,
+        observation_id=ObservationId("observation-1"),
+        statement="application.yml declares port 3306",
+        observed_at=NOW,
+        created_at=NOW,
+    )
+    supporting_link = EvidenceLink(
+        id=EvidenceLinkId("evidence-for-fact"),
+        episode_id=episode.id,
+        proposition_id=proposition.id,
+        target_type=CognitiveTargetType.FACT,
+        target_id="fact-1",
+        relation=EvidenceRelation.SUPPORTS,
+        reason="artifact content",
+        created_at=NOW,
+    )
     fact = Fact(
         id=FactId("fact-1"),
         episode_id=episode.id,
         statement="configured DB port is 3306",
+        basis=FactBasis.ARTIFACT_CONTENT,
         evidence_refs=(EvidenceLinkId("evidence-for-fact"),),
         status=FactStatus.ACTIVE,
         created_at=NOW,
@@ -223,10 +244,19 @@ def test_update_cannot_change_object_type_and_rolls_back_transaction(tmp_path) -
         object_changes=(
             ObjectChange(
                 kind=ChangeKind.CREATE,
+                object_type=CognitiveObjectType.PROPOSITION,
+                object_id=str(proposition.id),
+                value=proposition,
+            ),
+            ObjectChange(
+                kind=ChangeKind.CREATE,
                 object_type=CognitiveObjectType.FACT,
                 object_id=str(fact.id),
                 value=fact,
             ),
+        ),
+        relation_changes=(
+            RelationChange(kind=ChangeKind.CREATE, value=supporting_link),
         ),
     )
     asyncio.run(store.create_episode(episode))
@@ -237,16 +267,22 @@ def test_update_cannot_change_object_type_and_rolls_back_transaction(tmp_path) -
         episode_id=episode.id,
         statement="port mismatch causes connectivity failure",
         target_problem="DB connectivity",
-        evidence_refs=(EvidenceLinkId("evidence-1"),),
+        evidence_refs=(EvidenceLinkId("relation-in-rejected-tx"),),
         status=HypothesisStatus.PLAUSIBLE,
         created_at=NOW,
         updated_at=NOW,
     )
     update_tx_id = TransactionId("tx-change-type")
+    second_proposition = proposition.model_copy(
+        update={
+            "id": PropositionId("proposition-2"),
+            "observation_id": ObservationId("observation-2"),
+        }
+    )
     relation = EvidenceLink(
         id=EvidenceLinkId("relation-in-rejected-tx"),
         episode_id=episode.id,
-        proposition_id=PropositionId("proposition-1"),
+        proposition_id=second_proposition.id,
         target_type=CognitiveTargetType.HYPOTHESIS,
         target_id=str(hypothesis.id),
         relation=EvidenceRelation.SUPPORTS,
@@ -269,6 +305,12 @@ def test_update_cannot_change_object_type_and_rolls_back_transaction(tmp_path) -
         ),
         object_changes=(
             ObjectChange(
+                kind=ChangeKind.CREATE,
+                object_type=CognitiveObjectType.PROPOSITION,
+                object_id=str(second_proposition.id),
+                value=second_proposition,
+            ),
+            ObjectChange(
                 kind=ChangeKind.UPDATE,
                 object_type=CognitiveObjectType.HYPOTHESIS,
                 object_id=str(fact.id),
@@ -286,4 +328,97 @@ def test_update_cannot_change_object_type_and_rolls_back_transaction(tmp_path) -
     assert state.facts == (fact,)
     assert state.hypotheses == ()
     assert len(asyncio.run(store.list_events(episode.id))) == 1
+    assert asyncio.run(store.list_relations(episode.id)) == (supporting_link,)
+
+
+def test_store_rejects_cognitively_invalid_transaction_without_advancing_version(
+    tmp_path,
+) -> None:
+    store = make_store(tmp_path)
+    episode = make_episode()
+    invalid_link = EvidenceLink(
+        id=EvidenceLinkId("invalid-link"),
+        episode_id=episode.id,
+        proposition_id=PropositionId("missing-proposition"),
+        target_type=CognitiveTargetType.FACT,
+        target_id="missing-fact",
+        relation=EvidenceRelation.SUPPORTS,
+        reason="invalid fixture",
+        created_at=NOW,
+    )
+    transaction = CognitiveTransaction(
+        id=TransactionId("tx-invalid-cognition"),
+        episode_id=episode.id,
+        base_version=0,
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=invalid_link),),
+    )
+    asyncio.run(store.create_episode(episode))
+
+    with pytest.raises(CognitiveTransactionValidationError):
+        asyncio.run(store.commit_transaction(transaction))
+
+    assert asyncio.run(store.load_episode_state(episode.id)).episode.cognitive_version == 0
     assert asyncio.run(store.list_relations(episode.id)) == ()
+
+
+def test_fact_and_supporting_evidence_commit_atomically_with_same_transaction_target(
+    tmp_path,
+) -> None:
+    store = make_store(tmp_path)
+    episode = make_episode()
+    proposition = ObservedProposition(
+        id=PropositionId("p-atomic"),
+        episode_id=episode.id,
+        observation_id=ObservationId("o-atomic"),
+        statement="mysqld listens on 3307",
+        observed_at=NOW,
+        created_at=NOW,
+    )
+    link = EvidenceLink(
+        id=EvidenceLinkId("e-atomic"),
+        episode_id=episode.id,
+        proposition_id=proposition.id,
+        target_type=CognitiveTargetType.FACT,
+        target_id="f-atomic",
+        relation=EvidenceRelation.SUPPORTS,
+        reason="direct measurement",
+        created_at=NOW,
+    )
+    admitted_fact = Fact(
+        id=FactId("f-atomic"),
+        episode_id=episode.id,
+        statement="mysqld runtime port is 3307",
+        basis=FactBasis.DIRECT_MEASUREMENT,
+        evidence_refs=(link.id,),
+        status=FactStatus.ACTIVE,
+        created_at=NOW,
+    )
+    transaction = CognitiveTransaction(
+        id=TransactionId("tx-atomic-fact"),
+        episode_id=episode.id,
+        base_version=0,
+        object_changes=(
+            ObjectChange(
+                kind=ChangeKind.CREATE,
+                object_type=CognitiveObjectType.PROPOSITION,
+                object_id=str(proposition.id),
+                value=proposition,
+            ),
+            ObjectChange(
+                kind=ChangeKind.CREATE,
+                object_type=CognitiveObjectType.FACT,
+                object_id=str(admitted_fact.id),
+                value=admitted_fact,
+            ),
+        ),
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=link),),
+    )
+    asyncio.run(store.create_episode(episode))
+
+    committed = asyncio.run(store.commit_transaction(transaction))
+    state = asyncio.run(store.load_episode_state(episode.id))
+
+    assert committed.cognitive_version == 1
+    assert state.observed_propositions == (proposition,)
+    assert state.facts == (admitted_fact,)
+    assert asyncio.run(store.list_relations(episode.id)) == (link,)
