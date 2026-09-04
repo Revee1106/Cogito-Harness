@@ -48,7 +48,13 @@ from cogito.ports.cognitive_store import (
 
 
 class SQLiteCognitiveStore:
-    """SQLAlchemy-backed port adapter that returns domain objects only."""
+    """Story 0 SQLite adapter that returns domain objects only.
+
+    The port is asynchronous so Application code remains adapter-neutral. Its
+    local SQLAlchemy work is intentionally synchronous for the Story 0
+    single-process, serialized-caller baseline; ORM objects never cross this
+    boundary.
+    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -126,9 +132,12 @@ class SQLiteCognitiveStore:
         )
 
     async def commit_transaction(self, transaction: CognitiveTransaction) -> Episode:
+        """Atomically append history, update projections, and advance one version."""
+
         try:
             with self._sessions.begin() as session:
                 episode = self._episode_record(session, transaction.episode_id)
+                # The optimistic guard and every write share one database transaction.
                 if episode.cognitive_version != transaction.base_version:
                     raise CognitiveVersionConflict(
                         f"base version {transaction.base_version} does not match "
@@ -183,6 +192,8 @@ class SQLiteCognitiveStore:
 
     @staticmethod
     def _append_events(session: Session, transaction: CognitiveTransaction) -> None:
+        """Insert only the next contiguous event range; no update/delete path exists."""
+
         last_sequence = session.scalar(
             select(func.max(CognitiveEventRecord.sequence)).where(
                 CognitiveEventRecord.episode_id == str(transaction.episode_id)

@@ -25,6 +25,8 @@ class Episode(DomainModel):
 
 
 class EpisodeState(DomainModel):
+    """Rebuildable read model; committed objects and events remain the truth sources."""
+
     episode: Episode
     goal_contract: GoalContract | None = None
     facts: tuple[Fact, ...] = ()
@@ -41,4 +43,3 @@ class TurnResolution(DomainModel):
     focused_gap_id: GapId | None = None
     action: ActionDecision | None = None
     message: str | None = None
-

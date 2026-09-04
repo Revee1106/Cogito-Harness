@@ -22,6 +22,8 @@ CognitiveObject: TypeAlias = (
 
 
 class CognitiveEvent(DomainModel):
+    """Immutable envelope for one ordered entry in an episode's event history."""
+
     id: EventId
     episode_id: EpisodeId
     transaction_id: TransactionId
@@ -61,6 +63,8 @@ class RelationChange(DomainModel):
 
 
 class CognitiveTransaction(DomainModel):
+    """Validated commit intent guarded by the episode's ``base_version``."""
+
     id: TransactionId
     episode_id: EpisodeId
     base_version: int = Field(ge=0)
@@ -80,4 +84,3 @@ class CognitiveTransaction(DomainModel):
             if change.value.episode_id != self.episode_id:
                 raise ValueError("relation change belongs to another episode")
         return self
-
