@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
@@ -19,8 +20,10 @@ from cogito.domain.ids import (
     HypothesisId,
     ObservationId,
     PropositionId,
+    TransactionId,
 )
 from cogito.domain.models.evidence import EvidenceLink
+from cogito.domain.models.event import CognitiveTransaction
 from cogito.domain.models.fact import Fact
 from cogito.domain.models.gap import InformationGap
 from cogito.domain.models.goal import AcceptanceCriterion, GoalContract
@@ -32,6 +35,7 @@ NOW = datetime(2026, 1, 1, tzinfo=UTC)
 EPISODE_ID = EpisodeId("00000000-0000-0000-0000-000000000001")
 OBSERVATION_ID = ObservationId("00000000-0000-0000-0000-000000000002")
 PROPOSITION_ID = PropositionId("00000000-0000-0000-0000-000000000003")
+EVIDENCE_LINK_ID = EvidenceLinkId("00000000-0000-0000-0000-000000000008")
 
 
 def test_domain_model_forbids_extra_fields_and_is_frozen() -> None:
@@ -117,7 +121,7 @@ def test_fact_hypothesis_gap_and_evidence_validation() -> None:
         id=FactId("00000000-0000-0000-0000-000000000004"),
         episode_id=EPISODE_ID,
         statement="configured DB port is 3306",
-        evidence_refs=(PROPOSITION_ID,),
+        evidence_refs=(EVIDENCE_LINK_ID,),
         status=FactStatus.ACTIVE,
         created_at=NOW,
     )
@@ -142,7 +146,7 @@ def test_fact_hypothesis_gap_and_evidence_validation() -> None:
         created_at=NOW,
     )
     evidence = EvidenceLink(
-        id=EvidenceLinkId("00000000-0000-0000-0000-000000000008"),
+        id=EVIDENCE_LINK_ID,
         episode_id=EPISODE_ID,
         proposition_id=PROPOSITION_ID,
         target_type="HYPOTHESIS",
@@ -153,6 +157,8 @@ def test_fact_hypothesis_gap_and_evidence_validation() -> None:
     )
 
     assert fact.status is FactStatus.ACTIVE
+    assert fact.evidence_refs == (EVIDENCE_LINK_ID,)
+    assert get_args(Fact.model_fields["evidence_refs"].annotation)[0] is EvidenceLinkId
     assert hypothesis.status is HypothesisStatus.SUPPORTED
     assert gap.status is GapStatus.FOCUSED
     assert evidence.target_type.value == "HYPOTHESIS"
@@ -172,3 +178,12 @@ def test_fact_hypothesis_gap_and_evidence_validation() -> None:
         InformationGap.model_validate({**gap.model_dump(), "status": "DONE"})
     with pytest.raises(ValidationError):
         EvidenceLink.model_validate({**evidence.model_dump(), "target_type": "MEMORY"})
+
+
+def test_empty_cognitive_transaction_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="at least one cognitive change"):
+        CognitiveTransaction(
+            id=TransactionId("00000000-0000-0000-0000-000000000009"),
+            episode_id=EPISODE_ID,
+            base_version=0,
+        )

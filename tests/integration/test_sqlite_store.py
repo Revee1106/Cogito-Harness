@@ -9,20 +9,40 @@ from cogito.adapters.sqlite.store import SQLiteCognitiveStore
 from cogito.domain.enums import (
     ChangeKind,
     CognitiveObjectType,
+    CognitiveTargetType,
     EpisodeStatus,
+    EvidenceRelation,
     EventType,
+    FactStatus,
+    HypothesisStatus,
 )
 from cogito.domain.ids import (
     EpisodeId,
+    EvidenceLinkId,
     EventId,
+    FactId,
+    HypothesisId,
     ObservationId,
+    PropositionId,
     TransactionId,
 )
 from cogito.domain.models.episode import Episode
-from cogito.domain.models.event import CognitiveEvent, CognitiveTransaction, ObjectChange
+from cogito.domain.models.event import (
+    CognitiveEvent,
+    CognitiveTransaction,
+    ObjectChange,
+    RelationChange,
+)
+from cogito.domain.models.evidence import EvidenceLink
+from cogito.domain.models.fact import Fact
 from cogito.domain.models.goal import AcceptanceCriterion, GoalContract
+from cogito.domain.models.hypothesis import Hypothesis
 from cogito.domain.models.observation import Observation
-from cogito.ports.cognitive_store import CognitiveVersionConflict, ObjectAlreadyExists
+from cogito.ports.cognitive_store import (
+    CognitiveStoreError,
+    CognitiveVersionConflict,
+    ObjectAlreadyExists,
+)
 
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -173,3 +193,97 @@ def test_event_order_is_traceable_and_append_only(tmp_path) -> None:
     assert [event.payload["object_id"] for event in events] == ["o1", "o2"]
     assert not hasattr(store, "delete_event")
 
+
+def test_update_cannot_change_object_type_and_rolls_back_transaction(tmp_path) -> None:
+    store = make_store(tmp_path)
+    episode = make_episode()
+    fact = Fact(
+        id=FactId("fact-1"),
+        episode_id=episode.id,
+        statement="configured DB port is 3306",
+        evidence_refs=(),
+        status=FactStatus.ACTIVE,
+        created_at=NOW,
+    )
+    create_tx_id = TransactionId("tx-create-fact")
+    create_transaction = CognitiveTransaction(
+        id=create_tx_id,
+        episode_id=episode.id,
+        base_version=0,
+        events=(
+            CognitiveEvent(
+                id=EventId("event-create-fact"),
+                episode_id=episode.id,
+                transaction_id=create_tx_id,
+                sequence=1,
+                event_type=EventType.FACT_ADDED,
+                created_at=NOW,
+            ),
+        ),
+        object_changes=(
+            ObjectChange(
+                kind=ChangeKind.CREATE,
+                object_type=CognitiveObjectType.FACT,
+                object_id=str(fact.id),
+                value=fact,
+            ),
+        ),
+    )
+    asyncio.run(store.create_episode(episode))
+    asyncio.run(store.commit_transaction(create_transaction))
+
+    hypothesis = Hypothesis(
+        id=HypothesisId(str(fact.id)),
+        episode_id=episode.id,
+        statement="port mismatch causes connectivity failure",
+        target_problem="DB connectivity",
+        evidence_refs=(EvidenceLinkId("evidence-1"),),
+        status=HypothesisStatus.PLAUSIBLE,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    update_tx_id = TransactionId("tx-change-type")
+    relation = EvidenceLink(
+        id=EvidenceLinkId("relation-in-rejected-tx"),
+        episode_id=episode.id,
+        proposition_id=PropositionId("proposition-1"),
+        target_type=CognitiveTargetType.HYPOTHESIS,
+        target_id=str(hypothesis.id),
+        relation=EvidenceRelation.SUPPORTS,
+        reason="fixture relation must roll back",
+        created_at=NOW,
+    )
+    invalid_update = CognitiveTransaction(
+        id=update_tx_id,
+        episode_id=episode.id,
+        base_version=1,
+        events=(
+            CognitiveEvent(
+                id=EventId("event-change-type"),
+                episode_id=episode.id,
+                transaction_id=update_tx_id,
+                sequence=2,
+                event_type=EventType.HYPOTHESIS_CREATED,
+                created_at=NOW,
+            ),
+        ),
+        object_changes=(
+            ObjectChange(
+                kind=ChangeKind.UPDATE,
+                object_type=CognitiveObjectType.HYPOTHESIS,
+                object_id=str(fact.id),
+                value=hypothesis,
+            ),
+        ),
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=relation),),
+    )
+
+    with pytest.raises(CognitiveStoreError, match="cannot change object type"):
+        asyncio.run(store.commit_transaction(invalid_update))
+
+    state = asyncio.run(store.load_episode_state(episode.id))
+    assert state.episode.cognitive_version == 1
+    assert state.facts == (fact,)
+    assert state.hypotheses == ()
+    assert len(asyncio.run(store.list_events(episode.id))) == 1
+    assert asyncio.run(store.list_relations(episode.id)) == ()
