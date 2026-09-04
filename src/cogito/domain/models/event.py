@@ -22,6 +22,8 @@ CognitiveObject: TypeAlias = (
 
 
 class CognitiveEvent(DomainModel):
+    """Immutable envelope for one ordered entry in an episode's event history."""
+
     id: EventId
     episode_id: EpisodeId
     transaction_id: TransactionId
@@ -61,6 +63,8 @@ class RelationChange(DomainModel):
 
 
 class CognitiveTransaction(DomainModel):
+    """Validated commit intent guarded by the episode's ``base_version``."""
+
     id: TransactionId
     episode_id: EpisodeId
     base_version: int = Field(ge=0)
@@ -70,6 +74,8 @@ class CognitiveTransaction(DomainModel):
 
     @model_validator(mode="after")
     def envelope_is_consistent(self) -> "CognitiveTransaction":
+        if not (self.events or self.object_changes or self.relation_changes):
+            raise ValueError("transaction must contain at least one cognitive change")
         for event in self.events:
             if event.episode_id != self.episode_id or event.transaction_id != self.id:
                 raise ValueError("event envelope does not match transaction")
@@ -80,4 +86,3 @@ class CognitiveTransaction(DomainModel):
             if change.value.episode_id != self.episode_id:
                 raise ValueError("relation change belongs to another episode")
         return self
-

@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from cogito.adapters.sqlite.migrations import upgrade_database
 from cogito.adapters.sqlite.store import SQLiteCognitiveStore
 from cogito.config import load_config
 from cogito.domain.enums import EpisodeStatus
@@ -28,11 +29,11 @@ def _store() -> SQLiteCognitiveStore:
 
 @app.command("init")
 def initialize() -> None:
-    """Create the five-table SQLite baseline."""
+    """Upgrade the SQLite store to the current Alembic head."""
 
     store = _store()
     try:
-        store.create_schema()
+        upgrade_database(store.path)
         console.print(f"Initialized Cogito store at [cyan]{store.path}[/cyan]")
     finally:
         store.close()
@@ -48,7 +49,7 @@ def create_episode(
 
     store = _store()
     try:
-        store.create_schema()
+        upgrade_database(store.path)
         now = datetime.now(UTC)
         episode = Episode(
             id=new_id(EpisodeId),

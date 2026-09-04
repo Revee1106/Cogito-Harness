@@ -33,6 +33,8 @@ class GoalContractRecord(Base):
 
 
 class CognitiveEventRecord(Base):
+    """Append-only event row exposed through insert/list adapter operations."""
+
     __tablename__ = "cognitive_events"
     __table_args__ = (
         UniqueConstraint("episode_id", "sequence", name="uq_event_episode_sequence"),
@@ -75,4 +77,3 @@ class CognitiveRelationRecord(Base):
     relation_type: Mapped[str] = mapped_column(String, nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
