@@ -65,6 +65,8 @@ class SQLiteCognitiveStore:
         self._sessions = sessionmaker(self.engine, expire_on_commit=False)
 
     def create_schema(self) -> None:
+        """Create tables directly for isolated tests; runtime uses Alembic."""
+
         Base.metadata.create_all(self.engine)
 
     def close(self) -> None:
@@ -220,8 +222,14 @@ class SQLiteCognitiveStore:
                 raise CognitiveStoreError(f"cannot update missing object: {change.object_id}")
             if current.episode_id != str(transaction.episode_id):
                 raise CognitiveStoreError("cannot update an object from another episode")
+            current_type = CognitiveObjectType(current.object_type)
+            if current_type != change.object_type:
+                raise CognitiveStoreError(
+                    f"cannot change object type from {current_type.value} "
+                    f"to {change.object_type.value}"
+                )
             replacement = object_to_record(
-                CognitiveObjectType(current.object_type), change.value, version=current.version + 1
+                current_type, change.value, version=current.version + 1
             )
             current.status = replacement.status
             current.version = replacement.version

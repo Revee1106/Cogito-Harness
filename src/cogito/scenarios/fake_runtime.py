@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
+from cogito.adapters.sqlite.migrations import upgrade_database
 from cogito.adapters.sqlite.store import SQLiteCognitiveStore
 from cogito.adapters.tools.fake import FakeToolExecutor
 from cogito.application.runtime import action_result_to_observation
@@ -32,8 +33,8 @@ async def run_fake_runtime_scenario(database_path: str | Path) -> EpisodeState:
     """Run ActionResult -> Observation -> Persist with no external calls."""
 
     now = datetime.now(UTC)
+    upgrade_database(database_path)
     store = SQLiteCognitiveStore(database_path)
-    store.create_schema()
     episode = Episode(
         id=new_id(EpisodeId),
         status=EpisodeStatus.ACTIVE,

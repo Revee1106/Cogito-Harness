@@ -7,7 +7,7 @@ from pydantic import Field
 
 from cogito.domain.base import DomainModel
 from cogito.domain.enums import FactStatus
-from cogito.domain.ids import EpisodeId, FactId, PropositionId
+from cogito.domain.ids import EpisodeId, EvidenceLinkId, FactId
 
 
 class Fact(DomainModel):
@@ -20,7 +20,6 @@ class Fact(DomainModel):
     scope: str | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None
-    evidence_refs: tuple[PropositionId, ...] = ()
+    evidence_refs: tuple[EvidenceLinkId, ...] = ()
     status: FactStatus = FactStatus.ACTIVE
     created_at: datetime
-

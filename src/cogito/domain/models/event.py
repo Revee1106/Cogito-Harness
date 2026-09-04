@@ -74,6 +74,8 @@ class CognitiveTransaction(DomainModel):
 
     @model_validator(mode="after")
     def envelope_is_consistent(self) -> "CognitiveTransaction":
+        if not (self.events or self.object_changes or self.relation_changes):
+            raise ValueError("transaction must contain at least one cognitive change")
         for event in self.events:
             if event.episode_id != self.episode_id or event.transaction_id != self.id:
                 raise ValueError("event envelope does not match transaction")
