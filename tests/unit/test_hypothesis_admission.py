@@ -11,6 +11,7 @@ from cogito.domain.enums import (
     CognitiveTargetType,
     EvidenceRelation,
     HypothesisStatus,
+    PropositionStatus,
 )
 from cogito.domain.ids import (
     EpisodeId,
@@ -34,7 +35,10 @@ DRAFT = DraftTargetFactory.reserve_hypothesis(
 
 
 def proposition(
-    proposition_id: str, *, episode_id: EpisodeId = EPISODE_ID
+    proposition_id: str,
+    *,
+    episode_id: EpisodeId = EPISODE_ID,
+    status: PropositionStatus = PropositionStatus.ACTIVE,
 ) -> ObservedProposition:
     return ObservedProposition(
         id=PropositionId(proposition_id),
@@ -42,6 +46,7 @@ def proposition(
         observation_id=ObservationId(f"o-{proposition_id}"),
         statement=f"observed {proposition_id}",
         observed_at=NOW,
+        status=status,
         created_at=NOW,
     )
 
@@ -135,6 +140,24 @@ def test_cross_episode_proposition_or_evidence_is_rejected() -> None:
 
     assert cross_source.reason_codes == (AdmissionReasonCode.EPISODE_MISMATCH,)
     assert cross_evidence.reason_codes == (AdmissionReasonCode.EPISODE_MISMATCH,)
+
+
+def test_any_inactive_supporting_proposition_rejects_entire_hypothesis() -> None:
+    result = evaluate(
+        proposal(supporting=(PropositionId("p1"), PropositionId("p2"))),
+        propositions=(
+            proposition("p1"),
+            proposition("p2", status=PropositionStatus.RETRACTED),
+        ),
+        relations=(
+            evidence("p1", evidence_id="e1"),
+            evidence("p2", evidence_id="e2"),
+        ),
+    )
+
+    assert result.decision is AdmissionDecision.REJECT
+    assert result.value is None
+    assert result.reason_codes == (AdmissionReasonCode.PROPOSITION_INACTIVE,)
 
 
 def test_missing_prediction_and_disconfirming_condition_is_rejected() -> None:

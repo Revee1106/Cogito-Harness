@@ -14,6 +14,7 @@ from cogito.domain.enums import (
     CognitiveTargetType,
     EpisodeStatus,
     EvidenceRelation,
+    EventType,
     FactBasis,
     FactStatus,
     HypothesisStatus,
@@ -22,6 +23,7 @@ from cogito.domain.enums import (
 from cogito.domain.ids import (
     EpisodeId,
     EvidenceLinkId,
+    EventId,
     FactId,
     HypothesisId,
     ObservationId,
@@ -30,7 +32,13 @@ from cogito.domain.ids import (
 )
 from cogito.domain.models.draft import DraftTargetFactory
 from cogito.domain.models.episode import Episode
-from cogito.domain.models.event import CognitiveTransaction, ObjectChange, RelationChange
+from cogito.domain.models.event import (
+    CognitiveEvent,
+    CognitiveTransaction,
+    ObjectChange,
+    RelationChange,
+)
+from cogito.domain.models.evidence import EvidenceLink
 from cogito.domain.models.fact import Fact
 from cogito.domain.models.observation import Observation, ObservedProposition
 from cogito.domain.policies.evidence import EvidenceAdmissionPolicy
@@ -113,10 +121,31 @@ def test_scenario_a_direct_measurement_to_atomic_fact_admission(tmp_path) -> Non
         created_at=NOW,
     )
     assert admission.value is not None
+    transaction_id = TransactionId("tx-a")
     transaction = CognitiveTransaction(
-        id=TransactionId("tx-a"),
+        id=transaction_id,
         episode_id=EPISODE_ID,
         base_version=0,
+        events=(
+            CognitiveEvent(
+                id=EventId("ev-a-evidence"),
+                episode_id=EPISODE_ID,
+                transaction_id=transaction_id,
+                sequence=1,
+                event_type=EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e-a"},
+                created_at=NOW,
+            ),
+            CognitiveEvent(
+                id=EventId("ev-a-fact"),
+                episode_id=EPISODE_ID,
+                transaction_id=transaction_id,
+                sequence=2,
+                event_type=EventType.FACT_ADDED,
+                payload={"object_id": "f-a"},
+                created_at=NOW,
+            ),
+        ),
         object_changes=(
             object_change(observed, CognitiveObjectType.OBSERVATION),
             object_change(proposition, CognitiveObjectType.PROPOSITION),
@@ -139,6 +168,10 @@ def test_scenario_a_direct_measurement_to_atomic_fact_admission(tmp_path) -> Non
     assert state.facts[0].status is FactStatus.ACTIVE
     assert state.facts[0].evidence_refs == (EvidenceLinkId("e-a"),)
     assert asyncio.run(store.list_relations(EPISODE_ID))[0].target_id == "f-a"
+    assert [event.event_type for event in asyncio.run(store.list_events(EPISODE_ID))] == [
+        EventType.EVIDENCE_LINK_ADMITTED,
+        EventType.FACT_ADDED,
+    ]
 
 
 @pytest.mark.scenario
@@ -272,10 +305,34 @@ def test_scenario_c_two_propositions_create_only_plausible_hypothesis(tmp_path) 
         created_at=NOW,
     )
     assert hypothesis_result.value is not None
+    admission_tx_id = TransactionId("tx-c-admission")
     admission_tx = CognitiveTransaction(
-        id=TransactionId("tx-c-admission"),
+        id=admission_tx_id,
         episode_id=EPISODE_ID,
         base_version=1,
+        events=tuple(
+            CognitiveEvent(
+                id=EventId(f"ev-c-evidence-{index}"),
+                episode_id=EPISODE_ID,
+                transaction_id=admission_tx_id,
+                sequence=index,
+                event_type=EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": str(link.id)},
+                created_at=NOW,
+            )
+            for index, link in enumerate(admitted_links, start=1)
+        )
+        + (
+            CognitiveEvent(
+                id=EventId("ev-c-hypothesis"),
+                episode_id=EPISODE_ID,
+                transaction_id=admission_tx_id,
+                sequence=3,
+                event_type=EventType.HYPOTHESIS_CREATED,
+                payload={"object_id": "h-c"},
+                created_at=NOW,
+            ),
+        ),
         object_changes=(
             object_change(
                 hypothesis_result.value,
@@ -297,10 +354,21 @@ def test_scenario_c_two_propositions_create_only_plausible_hypothesis(tmp_path) 
         EvidenceLinkId("e-c1"),
         EvidenceLinkId("e-c2"),
     )
+    events = asyncio.run(store.list_events(EPISODE_ID))
+    assert [event.sequence for event in events] == [1, 2, 3]
+    assert [event.event_type for event in events] == [
+        EventType.EVIDENCE_LINK_ADMITTED,
+        EventType.EVIDENCE_LINK_ADMITTED,
+        EventType.HYPOTHESIS_CREATED,
+    ]
 
 
 @pytest.mark.scenario
-def test_scenario_d_overlapping_active_fact_conflict_never_selects_a_winner() -> None:
+def test_scenario_d_conflicting_reliable_facts_commit_without_selecting_winner(
+    tmp_path,
+) -> None:
+    store = SQLiteCognitiveStore(tmp_path / "scenario-d.db")
+    store.create_schema()
     existing = Fact(
         id=FactId("f-d1"),
         episode_id=EPISODE_ID,
@@ -316,6 +384,63 @@ def test_scenario_d_overlapping_active_fact_conflict_never_selects_a_winner() ->
         status=FactStatus.ACTIVE,
         created_at=NOW,
     )
+    existing_proposition = ObservedProposition(
+        id=PropositionId("p-d1"),
+        episode_id=EPISODE_ID,
+        observation_id=ObservationId("o-d1"),
+        statement="mysqld listens on 3306",
+        subject="mysqld",
+        predicate="runtime_port",
+        value=3306,
+        scope="host-A",
+        observed_at=NOW,
+        created_at=NOW,
+    )
+    existing_link = EvidenceLink(
+        id=EvidenceLinkId("e-d1"),
+        episode_id=EPISODE_ID,
+        proposition_id=existing_proposition.id,
+        target_type=CognitiveTargetType.FACT,
+        target_id=str(existing.id),
+        relation=EvidenceRelation.SUPPORTS,
+        reason="existing reliable measurement",
+        created_at=NOW,
+    )
+    existing_tx_id = TransactionId("tx-d-existing")
+    existing_tx = CognitiveTransaction(
+        id=existing_tx_id,
+        episode_id=EPISODE_ID,
+        base_version=0,
+        events=(
+            CognitiveEvent(
+                id=EventId("ev-d-existing-evidence"),
+                episode_id=EPISODE_ID,
+                transaction_id=existing_tx_id,
+                sequence=1,
+                event_type=EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e-d1"},
+                created_at=NOW,
+            ),
+            CognitiveEvent(
+                id=EventId("ev-d-existing-fact"),
+                episode_id=EPISODE_ID,
+                transaction_id=existing_tx_id,
+                sequence=2,
+                event_type=EventType.FACT_ADDED,
+                payload={"object_id": "f-d1"},
+                created_at=NOW,
+            ),
+        ),
+        object_changes=(
+            object_change(existing_proposition, CognitiveObjectType.PROPOSITION),
+            object_change(existing, CognitiveObjectType.FACT),
+        ),
+        relation_changes=(
+            RelationChange(kind=ChangeKind.CREATE, value=existing_link),
+        ),
+    )
+    asyncio.run(store.create_episode(episode()))
+    asyncio.run(store.commit_transaction(existing_tx))
     observed = Observation(
         id=ObservationId("o-d2"),
         episode_id=EPISODE_ID,
@@ -360,7 +485,55 @@ def test_scenario_d_overlapping_active_fact_conflict_never_selects_a_winner() ->
         existing_facts=(existing,),
     )
 
-    assert conflict.decision is AdmissionDecision.REJECT
+    assert conflict.decision is AdmissionDecision.ADMIT
     assert conflict.reason_codes == (AdmissionReasonCode.FACT_CONFLICT,)
-    assert conflict.value is None
+    assert conflict.value is not None
+    assert bool(conflict.reason_codes) is True
+
+    admission_tx_id = TransactionId("tx-d-conflict")
+    admission_tx = CognitiveTransaction(
+        id=admission_tx_id,
+        episode_id=EPISODE_ID,
+        base_version=1,
+        events=(
+            CognitiveEvent(
+                id=EventId("ev-d-new-evidence"),
+                episode_id=EPISODE_ID,
+                transaction_id=admission_tx_id,
+                sequence=3,
+                event_type=EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e-d2"},
+                created_at=NOW,
+            ),
+            CognitiveEvent(
+                id=EventId("ev-d-new-fact"),
+                episode_id=EPISODE_ID,
+                transaction_id=admission_tx_id,
+                sequence=4,
+                event_type=EventType.FACT_ADDED,
+                payload={"object_id": "f-d2"},
+                created_at=NOW,
+            ),
+        ),
+        object_changes=(
+            object_change(observed, CognitiveObjectType.OBSERVATION),
+            object_change(proposition, CognitiveObjectType.PROPOSITION),
+            object_change(conflict.value.fact, CognitiveObjectType.FACT),
+        ),
+        relation_changes=(
+            RelationChange(kind=ChangeKind.CREATE, value=conflict.value.evidence_link),
+        ),
+    )
+    committed = asyncio.run(store.commit_transaction(admission_tx))
+    state = asyncio.run(store.load_episode_state(EPISODE_ID))
+
+    assert committed.cognitive_version == 2
+    assert {item.value for item in state.facts} == {3306, 3307}
+    assert all(item.status is FactStatus.ACTIVE for item in state.facts)
     assert existing.status is FactStatus.ACTIVE
+    assert [event.sequence for event in asyncio.run(store.list_events(EPISODE_ID))] == [
+        1,
+        2,
+        3,
+        4,
+    ]

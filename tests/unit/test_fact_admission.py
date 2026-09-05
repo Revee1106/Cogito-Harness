@@ -179,7 +179,6 @@ def test_scope_expansion_and_temporal_overreach_are_rejected() -> None:
         ("user-report", FactBasis.SOURCE_REPORT),
         ("artifact:application.yml", FactBasis.ARTIFACT_CONTENT),
         ("shell:netstat", FactBasis.DIRECT_MEASUREMENT),
-        ("deterministic-rule:port-mismatch", FactBasis.DETERMINISTIC_DERIVATION),
     ),
 )
 def test_fact_basis_must_fit_the_source_context(source: str, basis: FactBasis) -> None:
@@ -192,6 +191,19 @@ def test_fact_basis_must_fit_the_source_context(source: str, basis: FactBasis) -
     assert admitted.decision is AdmissionDecision.ADMIT
     assert mismatched.reason_codes == (
         AdmissionReasonCode.SOURCE_FITNESS_INSUFFICIENT,
+    )
+
+
+def test_deterministic_derivation_via_ordinary_observation_is_deferred() -> None:
+    result = evaluate(
+        proposal(basis=FactBasis.DETERMINISTIC_DERIVATION),
+        source_observation=observation("deterministic-rule:port-mismatch"),
+    )
+
+    assert result.decision is AdmissionDecision.DEFER
+    assert result.value is None
+    assert tuple(code.value for code in result.reason_codes) == (
+        "DERIVATION_PREMISES_REQUIRED",
     )
 
 
@@ -220,6 +232,9 @@ def test_overlapping_active_fact_with_incompatible_value_reports_conflict() -> N
 
     result = evaluate(proposal(value=3307), existing_facts=(existing,))
 
-    assert result.decision is AdmissionDecision.REJECT
+    assert result.decision is AdmissionDecision.ADMIT
+    assert result.value is not None
+    assert result.value.fact.value == 3307
+    assert result.value.evidence_link.target_id == "reserved-f1"
     assert result.reason_codes == (AdmissionReasonCode.FACT_CONFLICT,)
     assert existing.status is FactStatus.ACTIVE

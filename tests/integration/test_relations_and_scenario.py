@@ -67,11 +67,19 @@ def test_relation_direction_is_source_relation_target(tmp_path) -> None:
     tx_id = TransactionId("tx-rel")
     tx = CognitiveTransaction(
         id=tx_id, episode_id=episode.id, base_version=0,
-        events=(CognitiveEvent(
-            id=EventId("ev-rel"), episode_id=episode.id, transaction_id=tx_id,
-            sequence=1, event_type=EventType.EVIDENCE_LINK_ADMITTED,
-            payload={"relation_id": "el1"}, created_at=NOW,
-        ),),
+        events=(
+            CognitiveEvent(
+                id=EventId("ev-rel"), episode_id=episode.id, transaction_id=tx_id,
+                sequence=1, event_type=EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "el1"}, created_at=NOW,
+            ),
+            CognitiveEvent(
+                id=EventId("ev-hypothesis"), episode_id=episode.id,
+                transaction_id=tx_id, sequence=2,
+                event_type=EventType.HYPOTHESIS_CREATED,
+                payload={"object_id": "h1"}, created_at=NOW,
+            ),
+        ),
         object_changes=(
             ObjectChange(
                 kind=ChangeKind.CREATE, object_type=CognitiveObjectType.PROPOSITION,

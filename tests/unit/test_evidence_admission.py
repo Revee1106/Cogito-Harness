@@ -11,6 +11,7 @@ from cogito.domain.enums import (
     EvidenceRelation,
     FactBasis,
     HypothesisStatus,
+    PropositionStatus,
 )
 from cogito.domain.ids import (
     EpisodeId,
@@ -36,7 +37,10 @@ EPISODE_ID = EpisodeId("episode-1")
 
 
 def proposition(
-    *, proposition_id: str = "p1", episode_id: EpisodeId = EPISODE_ID
+    *,
+    proposition_id: str = "p1",
+    episode_id: EpisodeId = EPISODE_ID,
+    status: PropositionStatus = PropositionStatus.ACTIVE,
 ) -> ObservedProposition:
     return ObservedProposition(
         id=PropositionId(proposition_id),
@@ -44,6 +48,7 @@ def proposition(
         observation_id=ObservationId(f"o-{proposition_id}"),
         statement="measured signal",
         observed_at=NOW,
+        status=status,
         created_at=NOW,
     )
 
@@ -195,6 +200,18 @@ def test_missing_target_and_cross_episode_are_rejected() -> None:
 
     assert missing_target.reason_codes == (AdmissionReasonCode.TARGET_NOT_FOUND,)
     assert cross_episode.reason_codes == (AdmissionReasonCode.EPISODE_MISMATCH,)
+
+
+def test_inactive_proposition_cannot_create_evidence_link() -> None:
+    result = admit(
+        fact(),
+        EvidenceRelation.SUPPORTS,
+        propositions=(proposition(status=PropositionStatus.RETRACTED),),
+    )
+
+    assert result.decision is AdmissionDecision.REJECT
+    assert result.value is None
+    assert result.reason_codes == (AdmissionReasonCode.PROPOSITION_INACTIVE,)
 
 
 def test_duplicate_and_opposite_material_relation_are_not_admitted() -> None:

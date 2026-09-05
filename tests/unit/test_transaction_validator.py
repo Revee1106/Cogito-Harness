@@ -2,26 +2,36 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from cogito.domain.enums import (
     AdmissionReasonCode,
     ChangeKind,
     CognitiveObjectType,
     CognitiveTargetType,
     EvidenceRelation,
+    EventType,
     FactBasis,
     FactStatus,
     HypothesisStatus,
+    PropositionStatus,
 )
 from cogito.domain.ids import (
     EpisodeId,
     EvidenceLinkId,
+    EventId,
     FactId,
     HypothesisId,
     ObservationId,
     PropositionId,
     TransactionId,
 )
-from cogito.domain.models.event import CognitiveTransaction, ObjectChange, RelationChange
+from cogito.domain.models.event import (
+    CognitiveEvent,
+    CognitiveTransaction,
+    ObjectChange,
+    RelationChange,
+)
 from cogito.domain.models.evidence import EvidenceLink
 from cogito.domain.models.fact import Fact
 from cogito.domain.models.hypothesis import Hypothesis
@@ -34,7 +44,10 @@ EPISODE_ID = EpisodeId("episode-1")
 
 
 def proposition(
-    proposition_id: str = "p1", *, episode_id: EpisodeId = EPISODE_ID
+    proposition_id: str = "p1",
+    *,
+    episode_id: EpisodeId = EPISODE_ID,
+    status: PropositionStatus = PropositionStatus.ACTIVE,
 ) -> ObservedProposition:
     return ObservedProposition(
         id=PropositionId(proposition_id),
@@ -42,6 +55,7 @@ def proposition(
         observation_id=ObservationId("o1"),
         statement="mysqld listens on 3307",
         observed_at=NOW,
+        status=status,
         created_at=NOW,
     )
 
@@ -120,6 +134,7 @@ def create_change(value, object_type: CognitiveObjectType) -> ObjectChange:
 
 def transaction(
     *,
+    events: tuple[CognitiveEvent, ...] = (),
     object_changes: tuple[ObjectChange, ...] = (),
     relation_changes: tuple[RelationChange, ...] = (),
 ) -> CognitiveTransaction:
@@ -127,9 +142,32 @@ def transaction(
         id=TransactionId("tx1"),
         episode_id=EPISODE_ID,
         base_version=0,
+        events=events,
         object_changes=object_changes,
         relation_changes=relation_changes,
     )
+
+
+def event(
+    event_type: EventType,
+    *,
+    payload: dict[str, object] | None = None,
+    event_id: str = "event-1",
+    sequence: int = 1,
+) -> CognitiveEvent:
+    return CognitiveEvent(
+        id=EventId(event_id),
+        episode_id=EPISODE_ID,
+        transaction_id=TransactionId("tx1"),
+        sequence=sequence,
+        event_type=event_type,
+        payload={} if payload is None else payload,
+        created_at=NOW,
+    )
+
+
+def reason_values(result) -> tuple[str, ...]:
+    return tuple(code.value for code in result.reason_codes)
 
 
 def validate(tx: CognitiveTransaction, *, current_objects=(), current_relations=()):
@@ -145,6 +183,18 @@ def test_relation_may_target_fact_created_in_same_transaction() -> None:
     f1 = fact()
     link = relation()
     tx = transaction(
+        events=(
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e1"},
+            ),
+            event(
+                EventType.FACT_ADDED,
+                payload={"object_id": "f1"},
+                event_id="event-2",
+                sequence=2,
+            ),
+        ),
         object_changes=(
             create_change(p1, CognitiveObjectType.PROPOSITION),
             create_change(f1, CognitiveObjectType.FACT),
@@ -175,6 +225,18 @@ def test_fact_evidence_ref_must_target_the_fact_itself() -> None:
     f1 = fact()
     wrong = relation(target_id="other-f")
     tx = transaction(
+        events=(
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e1"},
+            ),
+            event(
+                EventType.FACT_ADDED,
+                payload={"object_id": "f1"},
+                event_id="event-2",
+                sequence=2,
+            ),
+        ),
         object_changes=(create_change(f1, CognitiveObjectType.FACT),),
         relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=wrong),),
     )
@@ -195,6 +257,18 @@ def test_hypothesis_requires_a_support_ref_targeting_itself() -> None:
         relation_type=EvidenceRelation.CONTRADICTS,
     )
     tx = transaction(
+        events=(
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e1"},
+            ),
+            event(
+                EventType.HYPOTHESIS_CREATED,
+                payload={"object_id": "h1"},
+                event_id="event-2",
+                sequence=2,
+            ),
+        ),
         object_changes=(create_change(h1, CognitiveObjectType.HYPOTHESIS),),
         relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=contradicts),),
     )
@@ -273,14 +347,213 @@ def test_new_fact_and_hypothesis_lifecycle_states_are_restricted() -> None:
     assert AdmissionReasonCode.INVALID_INITIAL_STATUS in validate(supported).reason_codes
 
 
-def test_transaction_detects_fact_conflict_without_mutating_existing_fact() -> None:
+def test_transaction_allows_fact_conflict_without_mutating_existing_fact() -> None:
     existing = fact("existing-f", value=3306)
     candidate = fact("new-f", value=3307)
+    supporting = relation(target_id="new-f")
     tx = transaction(
-        object_changes=(create_change(candidate, CognitiveObjectType.FACT),)
+        events=(
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e1"},
+            ),
+            event(
+                EventType.FACT_ADDED,
+                payload={"object_id": "new-f"},
+                event_id="event-2",
+                sequence=2,
+            ),
+        ),
+        object_changes=(create_change(candidate, CognitiveObjectType.FACT),),
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=supporting),),
     )
 
-    result = validate(tx, current_objects=(existing,))
+    result = validate(tx, current_objects=(existing, proposition()))
 
-    assert AdmissionReasonCode.FACT_CONFLICT in result.reason_codes
+    assert result.valid is True
+    assert AdmissionReasonCode.FACT_CONFLICT not in result.reason_codes
     assert existing.status is FactStatus.ACTIVE
+
+
+def test_transaction_rejects_new_evidence_from_inactive_proposition() -> None:
+    link = relation()
+    tx = transaction(
+        events=(
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e1"},
+            ),
+        ),
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=link),),
+    )
+
+    result = validate(
+        tx,
+        current_objects=(
+            proposition(status=PropositionStatus.RETRACTED),
+            fact(),
+        ),
+    )
+
+    assert result.valid is False
+    assert AdmissionReasonCode.PROPOSITION_INACTIVE in result.reason_codes
+
+
+@pytest.mark.parametrize(
+    "candidate_events",
+    (
+        (),
+        (event(EventType.FACT_ADDED, payload={"relation_id": "e1"}),),
+        (event(EventType.EVIDENCE_LINK_ADMITTED),),
+        (
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "other-evidence"},
+            ),
+        ),
+    ),
+)
+def test_evidence_create_requires_exact_matching_event(
+    candidate_events: tuple[CognitiveEvent, ...],
+) -> None:
+    tx = transaction(
+        events=candidate_events,
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=relation()),),
+    )
+
+    result = validate(tx, current_objects=(proposition(), fact()))
+
+    assert result.valid is False
+    assert "MISSING_COGNITIVE_EVENT" in reason_values(result)
+
+
+@pytest.mark.parametrize(
+    "fact_event",
+    (
+        None,
+        event(
+            EventType.HYPOTHESIS_CREATED,
+            payload={"object_id": "f1"},
+            event_id="event-2",
+            sequence=2,
+        ),
+        event(EventType.FACT_ADDED, event_id="event-2", sequence=2),
+        event(
+            EventType.FACT_ADDED,
+            payload={"object_id": "other-fact"},
+            event_id="event-2",
+            sequence=2,
+        ),
+    ),
+)
+def test_fact_create_requires_exact_matching_event(
+    fact_event: CognitiveEvent | None,
+) -> None:
+    events = (
+        event(
+            EventType.EVIDENCE_LINK_ADMITTED,
+            payload={"relation_id": "e1"},
+        ),
+    )
+    if fact_event is not None:
+        events += (fact_event,)
+    tx = transaction(
+        events=events,
+        object_changes=(create_change(fact(), CognitiveObjectType.FACT),),
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=relation()),),
+    )
+
+    result = validate(tx, current_objects=(proposition(),))
+
+    assert result.valid is False
+    assert "MISSING_COGNITIVE_EVENT" in reason_values(result)
+
+
+@pytest.mark.parametrize(
+    "hypothesis_event",
+    (
+        None,
+        event(
+            EventType.FACT_ADDED,
+            payload={"object_id": "h1"},
+            event_id="event-2",
+            sequence=2,
+        ),
+        event(EventType.HYPOTHESIS_CREATED, event_id="event-2", sequence=2),
+        event(
+            EventType.HYPOTHESIS_CREATED,
+            payload={"object_id": "other-hypothesis"},
+            event_id="event-2",
+            sequence=2,
+        ),
+    ),
+)
+def test_hypothesis_create_requires_exact_matching_event(
+    hypothesis_event: CognitiveEvent | None,
+) -> None:
+    supporting = relation(
+        target_type=CognitiveTargetType.HYPOTHESIS,
+        target_id="h1",
+    )
+    events = (
+        event(
+            EventType.EVIDENCE_LINK_ADMITTED,
+            payload={"relation_id": "e1"},
+        ),
+    )
+    if hypothesis_event is not None:
+        events += (hypothesis_event,)
+    tx = transaction(
+        events=events,
+        object_changes=(
+            create_change(hypothesis(), CognitiveObjectType.HYPOTHESIS),
+        ),
+        relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=supporting),),
+    )
+
+    result = validate(tx, current_objects=(proposition(),))
+
+    assert result.valid is False
+    assert "MISSING_COGNITIVE_EVENT" in reason_values(result)
+
+
+def test_multiple_evidence_links_each_have_a_matching_event() -> None:
+    links = (
+        relation(
+            evidence_id="e1",
+            proposition_id="p1",
+            target_type=CognitiveTargetType.HYPOTHESIS,
+            target_id="h1",
+        ),
+        relation(
+            evidence_id="e2",
+            proposition_id="p2",
+            target_type=CognitiveTargetType.HYPOTHESIS,
+            target_id="h1",
+        ),
+    )
+    tx = transaction(
+        events=(
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e1"},
+            ),
+            event(
+                EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "e2"},
+                event_id="event-2",
+                sequence=2,
+            ),
+        ),
+        relation_changes=tuple(
+            RelationChange(kind=ChangeKind.CREATE, value=link) for link in links
+        ),
+    )
+
+    result = validate(
+        tx,
+        current_objects=(proposition("p1"), proposition("p2"), hypothesis()),
+    )
+
+    assert result.valid is True
+    assert result.reason_codes == ()
