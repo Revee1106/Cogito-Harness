@@ -32,7 +32,6 @@ SOURCE_MARKERS: dict[FactBasis, tuple[str, ...]] = {
         "sensor",
         "action-result",
     ),
-    FactBasis.DETERMINISTIC_DERIVATION: ("deterministic", "rule"),
 }
 
 EXPLANATORY_PREDICATES = {
@@ -89,6 +88,14 @@ class FactAdmissionPolicy:
             return self._reject(
                 AdmissionReasonCode.PROPOSITION_INACTIVE,
                 "only active propositions may support new Facts",
+            )
+        if proposal.basis is FactBasis.DETERMINISTIC_DERIVATION:
+            return AdmissionResult[AdmittedFactBundle](
+                decision=AdmissionDecision.DEFER,
+                reason_codes=(AdmissionReasonCode.DERIVATION_PREMISES_REQUIRED,),
+                public_reasons=(
+                    "deterministic derivation requires admitted Fact premises and a rule",
+                ),
             )
         if proposal.semantic_entailment is SemanticEntailment.STRONGER_THAN_SOURCE:
             return self._reject(
@@ -149,11 +156,6 @@ class FactAdmissionPolicy:
             status=FactStatus.ACTIVE,
             created_at=created_at,
         )
-        if any(self.facts_conflict(item, candidate) for item in existing_facts):
-            return self._reject(
-                AdmissionReasonCode.FACT_CONFLICT,
-                "an active Fact already has an incompatible value in overlapping scope and time",
-            )
         evidence = EvidenceLink(
             id=evidence_id,
             episode_id=episode_id,
@@ -164,9 +166,20 @@ class FactAdmissionPolicy:
             reason="source proposition directly supports admitted Fact",
             created_at=created_at,
         )
+        conflict_detected = any(
+            self.facts_conflict(item, candidate) for item in existing_facts
+        )
         return AdmissionResult[AdmittedFactBundle](
             decision=AdmissionDecision.ADMIT,
             value=AdmittedFactBundle(fact=candidate, evidence_link=evidence),
+            reason_codes=(AdmissionReasonCode.FACT_CONFLICT,)
+            if conflict_detected
+            else (),
+            public_reasons=(
+                "an active Fact has an incompatible value in overlapping scope and time",
+            )
+            if conflict_detected
+            else (),
         )
 
     @staticmethod

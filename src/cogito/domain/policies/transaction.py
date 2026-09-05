@@ -9,8 +9,10 @@ from cogito.domain.enums import (
     CognitiveObjectType,
     CognitiveTargetType,
     EvidenceRelation,
+    EventType,
     FactStatus,
     HypothesisStatus,
+    PropositionStatus,
 )
 from cogito.domain.models.action import ActionDecision
 from cogito.domain.models.event import CognitiveObject, CognitiveTransaction
@@ -20,7 +22,6 @@ from cogito.domain.models.gap import InformationGap
 from cogito.domain.models.hypothesis import Hypothesis
 from cogito.domain.models.observation import Observation, ObservedProposition
 from cogito.domain.policies.evidence import ALLOWED_RELATIONS
-from cogito.domain.policies.fact import FactAdmissionPolicy
 
 
 OBJECT_TYPES: dict[type[object], CognitiveObjectType] = {
@@ -147,6 +148,11 @@ class CognitiveTransactionValidator:
                     AdmissionReasonCode.EPISODE_MISMATCH,
                     "EvidenceLink source belongs to another episode",
                 )
+            elif source.status is not PropositionStatus.ACTIVE:
+                add(
+                    AdmissionReasonCode.PROPOSITION_INACTIVE,
+                    "only active propositions may create new EvidenceLinks",
+                )
             target = object_by_id.get(link.target_id)
             if target is None:
                 add(
@@ -199,6 +205,38 @@ class CognitiveTransactionValidator:
                 )
             staged_relations.append(link)
 
+        required_events: list[tuple[EventType, str, str]] = []
+        for change in transaction.relation_changes:
+            if change.kind is ChangeKind.CREATE:
+                required_events.append(
+                    (
+                        EventType.EVIDENCE_LINK_ADMITTED,
+                        "relation_id",
+                        str(change.value.id),
+                    )
+                )
+        for change in transaction.object_changes:
+            if change.kind is not ChangeKind.CREATE:
+                continue
+            if isinstance(change.value, Fact):
+                required_events.append(
+                    (EventType.FACT_ADDED, "object_id", str(change.value.id))
+                )
+            elif isinstance(change.value, Hypothesis):
+                required_events.append(
+                    (EventType.HYPOTHESIS_CREATED, "object_id", str(change.value.id))
+                )
+        for event_type, payload_key, material_id in required_events:
+            if not any(
+                event.event_type is event_type
+                and event.payload.get(payload_key) == material_id
+                for event in transaction.events
+            ):
+                add(
+                    AdmissionReasonCode.MISSING_COGNITIVE_EVENT,
+                    "Story 1A material CREATE is missing its matching CognitiveEvent",
+                )
+
         relation_by_id = {
             str(item.id): item for item in all_relations + staged_relations
         }
@@ -240,21 +278,6 @@ class CognitiveTransactionValidator:
                         AdmissionReasonCode.NO_SUPPORTING_EVIDENCE,
                         "Hypothesis needs a SUPPORTS EvidenceLink targeting itself",
                     )
-
-        committed_facts = [item for item in current_objects if isinstance(item, Fact)]
-        new_facts: list[Fact] = []
-        for value in created_objects:
-            if not isinstance(value, Fact):
-                continue
-            if any(
-                FactAdmissionPolicy.facts_conflict(item, value)
-                for item in committed_facts + new_facts
-            ):
-                add(
-                    AdmissionReasonCode.FACT_CONFLICT,
-                    "transaction introduces incompatible active Facts in overlapping scope and time",
-                )
-            new_facts.append(value)
 
         return TransactionValidationResult(
             valid=not issues,

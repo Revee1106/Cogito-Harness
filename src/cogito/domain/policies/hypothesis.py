@@ -8,6 +8,7 @@ from cogito.domain.enums import (
     CognitiveTargetType,
     EvidenceRelation,
     HypothesisStatus,
+    PropositionStatus,
 )
 from cogito.domain.ids import EpisodeId, HypothesisId
 from cogito.domain.models.admission import AdmissionResult
@@ -61,6 +62,15 @@ class HypothesisAdmissionPolicy:
             return self._reject(
                 AdmissionReasonCode.EPISODE_MISMATCH,
                 "all candidate propositions must belong to the current episode",
+            )
+        if any(
+            item.status is not PropositionStatus.ACTIVE
+            for item in supporting
+            if item is not None
+        ):
+            return self._reject(
+                AdmissionReasonCode.PROPOSITION_INACTIVE,
+                "all supporting propositions must be active to create a Hypothesis",
             )
 
         relevant_relations = tuple(

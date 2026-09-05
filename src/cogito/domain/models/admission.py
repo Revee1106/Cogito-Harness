@@ -12,7 +12,7 @@ ValueT = TypeVar("ValueT")
 
 
 class AdmissionResult(DomainModel, Generic[ValueT]):
-    """Auditable admission outcome without hidden reasoning traces."""
+    """Auditable outcome; ADMIT reason codes may be non-fatal diagnostics."""
 
     decision: AdmissionDecision
     value: ValueT | None = None

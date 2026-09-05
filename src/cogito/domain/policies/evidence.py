@@ -8,6 +8,7 @@ from cogito.domain.enums import (
     AdmissionReasonCode,
     CognitiveTargetType,
     EvidenceRelation,
+    PropositionStatus,
 )
 from cogito.domain.ids import EpisodeId, EvidenceLinkId
 from cogito.domain.models.admission import AdmissionResult
@@ -85,6 +86,11 @@ class EvidenceAdmissionPolicy:
             return self._reject(
                 AdmissionReasonCode.EPISODE_MISMATCH,
                 "source, target, and transaction must belong to one episode",
+            )
+        if source.status is not PropositionStatus.ACTIVE:
+            return self._reject(
+                AdmissionReasonCode.PROPOSITION_INACTIVE,
+                "only active propositions may create new EvidenceLinks",
             )
         actual_type = cognitive_target_type(target)
         if proposal.target_type is not actual_type:
