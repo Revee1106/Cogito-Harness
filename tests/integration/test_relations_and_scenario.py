@@ -15,6 +15,7 @@ from cogito.domain.enums import (
     EpisodeStatus,
     EvidenceRelation,
     EventType,
+    HypothesisStatus,
 )
 from cogito.domain.ids import (
     ActionId,
@@ -22,6 +23,7 @@ from cogito.domain.ids import (
     EvidenceLinkId,
     EventId,
     HypothesisId,
+    ObservationId,
     PropositionId,
     TransactionId,
 )
@@ -30,6 +32,8 @@ from cogito.domain.models.episode import Episode
 from cogito.domain.models.event import CognitiveEvent, CognitiveTransaction, ObjectChange, RelationChange
 from cogito.domain.models.evidence import EvidenceLink
 from cogito.domain.models.goal import AcceptanceCriterion, GoalContract
+from cogito.domain.models.hypothesis import Hypothesis
+from cogito.domain.models.observation import ObservedProposition
 
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -48,15 +52,44 @@ def test_relation_direction_is_source_relation_target(tmp_path) -> None:
         target_id=str(HypothesisId("h1")), relation=EvidenceRelation.SUPPORTS,
         reason="fixture", created_at=NOW,
     )
+    proposition = ObservedProposition(
+        id=PropositionId("p1"), episode_id=episode.id,
+        observation_id=ObservationId("o1"), statement="observed listener mismatch",
+        observed_at=NOW, created_at=NOW,
+    )
+    hypothesis = Hypothesis(
+        id=HypothesisId("h1"), episode_id=episode.id,
+        statement="endpoint mismatch contributes to failure",
+        target_problem="DB connectivity", evidence_refs=(relation.id,),
+        prediction="using the listener endpoint removes refusal",
+        status=HypothesisStatus.PLAUSIBLE, created_at=NOW, updated_at=NOW,
+    )
     tx_id = TransactionId("tx-rel")
     tx = CognitiveTransaction(
         id=tx_id, episode_id=episode.id, base_version=0,
-        events=(CognitiveEvent(
-            id=EventId("ev-rel"), episode_id=episode.id, transaction_id=tx_id,
-            sequence=1, event_type=EventType.EVIDENCE_LINK_ADMITTED,
-            payload={"relation_id": "el1"}, created_at=NOW,
-        ),),
-        object_changes=(),
+        events=(
+            CognitiveEvent(
+                id=EventId("ev-rel"), episode_id=episode.id, transaction_id=tx_id,
+                sequence=1, event_type=EventType.EVIDENCE_LINK_ADMITTED,
+                payload={"relation_id": "el1"}, created_at=NOW,
+            ),
+            CognitiveEvent(
+                id=EventId("ev-hypothesis"), episode_id=episode.id,
+                transaction_id=tx_id, sequence=2,
+                event_type=EventType.HYPOTHESIS_CREATED,
+                payload={"object_id": "h1"}, created_at=NOW,
+            ),
+        ),
+        object_changes=(
+            ObjectChange(
+                kind=ChangeKind.CREATE, object_type=CognitiveObjectType.PROPOSITION,
+                object_id=str(proposition.id), value=proposition,
+            ),
+            ObjectChange(
+                kind=ChangeKind.CREATE, object_type=CognitiveObjectType.HYPOTHESIS,
+                object_id=str(hypothesis.id), value=hypothesis,
+            ),
+        ),
         relation_changes=(RelationChange(kind=ChangeKind.CREATE, value=relation),),
     )
     asyncio.run(store.create_episode(episode))

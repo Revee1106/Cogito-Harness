@@ -1,12 +1,16 @@
 # Cogito-Harness
 
-Cogito-Harness 是一个以持续认知状态更新为核心的问题求解 Harness。本仓库当前只实现 **Story 0：工程基线与最小内核骨架**，用于冻结后续 Cogito v1 所依赖的类型、端口、持久化与事务边界。
+Cogito-Harness 是一个以持续认知状态更新为核心的问题求解 Harness。当前项目状态：
+
+- **Story 0：工程基线与最小内核骨架 — Complete / Frozen**
+- **Story 1A：Cognitive Admission Foundation — Complete / Frozen**
+- **Next：Story 1B Local Revision Engine — Design**
 
 核心原则：
 
 > 计划不是路线图，而是方向盘——每时每刻都在微调。
 
-当前内核坚持：Observation 与解释分离、Proposal 与正式认知对象分离、Tool Result 先转为 Observation、事件历史 append-only，以及带 `base_version` 冲突检测的原子 Cognitive Transaction。
+当前内核坚持：Proposal ≠ Committed Cognition、Observation ≠ Fact、No Evidence → No Hypothesis、Evidence Relation ≠ Belief Revision、Contradiction ≠ Structural Corruption；事件历史 append-only，Cognitive Transaction 使用 `base_version` 做冲突检测并原子提交。
 
 ## 环境与安装
 
@@ -108,17 +112,22 @@ ActionDecision
 
 已实现：
 
-- Strongly Typed IDs、Domain Models 与 Proposal Models
-- CognitiveEvent、CognitiveTransaction、Port Interfaces
-- SQLite/SQLAlchemy Adapter 与 Alembic migration
-- FakeModelProvider、FakeToolExecutor
-- 最小 CLI、Unit/Integration/Scenario Tests
+- Story 0：Python 3.14+、uv、Pydantic v2、Strongly Typed IDs、Domain/Proposal Models、Ports、SQLite、SQLAlchemy 2.x、Alembic、CognitiveTransaction、Event/Object persistence、Fake Runtime、最小 CLI 与基础测试框架。
+- Story 1A：FactProposal / Fact Admission、EvidenceAdmissionPolicy、HypothesisAdmissionPolicy、Draft / Reserved Cognitive Target、CognitiveTransactionValidator，以及 `ADMIT / DEFER / REJECT / NO_NEW_ADMISSION`。
+- Evidence 与 Hypothesis 不变量：Evidence relation compatibility、Evidence deduplication、No Evidence → No Hypothesis；inactive Proposition 不可被引用。
+- Fact 不变量：assertion strength boundary；普通 Observation 的 `DETERMINISTIC_DERIVATION` 会 `DEFER / DERIVATION_PREMISES_REQUIRED`。
+- Fact 冲突语义：可靠冲突 Fact 可共存；结果仍为 `ADMIT`，`FACT_CONFLICT` 仅作为 diagnostic，admitted Fact/Evidence bundle 可正常提交。
+- Transaction 不变量：material CREATE 必须分别带有 `EVIDENCE_LINK_ADMITTED`、`FACT_ADDED` 或 `HYPOTHESIS_CREATED` 事件，并保持原子提交与版本冲突检测。
 
 明确不支持：
 
 - 真实 OpenAI、DeepSeek 或其他模型 Provider
-- 自动 Prompt、完整 Admission/Revision/Scheduler 认知循环
+- Story 1B Local Revision Engine、UPDATE / Revision event 语义与 reverse revision
+- Hypothesis strengthen / reject / confirm、Gap resolution
+- Fact supersede / retract / refine execution、Contradiction lifecycle、Evidence invalidation
+- 自动 Prompt、完整 Scheduler / Cognitive Loop
 - 真实 Shell/Git Executor、Web Search、HTTP API、GUI
+- 真实 LLM integration、真实 Tool Runtime、Benchmark comparison
 - Long-Term Memory、Memory Consolidation、Vector DB、Graph DB
 - Expectation、Anomaly、Explanatory Demand、Problem Pattern
 - Cognitive Pressure、Attention Allocation、Problem Reframe、Negative Evidence
@@ -142,5 +151,6 @@ Interfaces → Application → Domain
 - [`Cogito-Harness_理论基线_v0.8.md`](Cogito-Harness_理论基线_v0.8.md)
 - [`Cogito-Harness_总体开发文档_v0.1.md`](Cogito-Harness_总体开发文档_v0.1.md)
 - [`Cogito-Harness_Story0_工程基线与最小内核骨架_v0.1.md`](Cogito-Harness_Story0_工程基线与最小内核骨架_v0.1.md)
+- [`Cogito-Harness_Story1A_Cognitive_Admission_Foundation_v0.1.md`](Cogito-Harness_Story1A_Cognitive_Admission_Foundation_v0.1.md)
 
-后续 Story 1 才会开始实现 Admission Policies 与 Revision Engine；Story 0 不包含这些能力。
+下一阶段只进入 **Story 1B Local Revision Engine** 的设计；Story 1A 的边界保持冻结。
