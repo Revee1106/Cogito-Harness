@@ -8,6 +8,8 @@ from cogito.domain.base import DomainModel
 from cogito.domain.enums import EpisodeStatus, TurnResolutionKind
 from cogito.domain.ids import EpisodeId, GapId
 from cogito.domain.models.action import ActionDecision
+from cogito.domain.models.event import CognitiveEvent
+from cogito.domain.models.evidence import EvidenceLink
 from cogito.domain.models.fact import Fact
 from cogito.domain.models.gap import InformationGap
 from cogito.domain.models.goal import GoalContract
@@ -36,6 +38,8 @@ class EpisodeState(DomainModel):
     focused_gap_id: GapId | None = None
     recent_observations: tuple[Observation, ...] = ()
     recent_actions: tuple[ActionDecision, ...] = ()
+    evidence_links: tuple[EvidenceLink, ...] = ()
+    cognitive_events: tuple[CognitiveEvent, ...] = ()
 
 
 class TurnResolution(DomainModel):
