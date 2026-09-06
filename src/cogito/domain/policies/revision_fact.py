@@ -55,8 +55,12 @@ class FactSupersedePolicy:
         elif basis is Basis.EXPLICIT_STATE_TRANSITION:
             if proposal.transition_match is not SemanticDirectness.DIRECT:
                 return defer(Code.TEMPORAL_BASIS_INSUFFICIENT)
-        elif not self._artifact_succeeds(state, old, replacement, proposal):
-            return defer(Code.TEMPORAL_BASIS_INSUFFICIENT)
+        elif basis is Basis.VERSIONED_ARTIFACT_SUCCESSION:
+            # The current Domain has no admitted artifact-version/ordering
+            # provenance contract. Proposal ordinals and a shared source_ref
+            # cannot establish these world facts. Retain the input shape, but
+            # defer until such provenance is explicitly supported.
+            return defer(Code.VERSION_PROVENANCE_INSUFFICIENT)
         updated = old.model_copy(update={"status":FactStatus.SUPERSEDED})
         effect = material(old, updated, EventType.FACT_SUPERSEDED, basis.value,
                           tuple(str(e.id) for e in links), proposal.reason, proposal)
@@ -81,20 +85,3 @@ class FactSupersedePolicy:
                 return None
             times.append(instant)
         return max(times) if end else min(times)
-
-    @staticmethod
-    def _artifact_succeeds(state, old, replacement, proposal):
-        if (old.basis is not FactBasis.ARTIFACT_CONTENT or not proposal.artifact_identity
-                or proposal.old_version is None or proposal.replacement_version is None
-                or proposal.replacement_version <= proposal.old_version):
-            return False
-        for fact in (old, replacement):
-            links = evidence_for(state, fact.evidence_refs, str(fact.id),
-                                 CognitiveTargetType.FACT, EvidenceRelation.SUPPORTS)
-            if isinstance(links, PolicyEffect) or not links:
-                return False
-            for link in links:
-                observation = observation_for(state, link)
-                if observation is None or observation.source_ref != proposal.artifact_identity:
-                    return False
-        return True

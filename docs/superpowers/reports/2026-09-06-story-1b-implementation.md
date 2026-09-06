@@ -2,6 +2,8 @@
 
 Date: 2026-09-06. Status: implementation complete; ready for independent code review, not yet formally frozen.
 
+Historical implementation report: the optional creation-snapshot rule and proposal-only artifact-version acceptance below were superseded by the [freeze acceptance fix](2026-09-06-story-1b-acceptance-fix.md). Use that report for the current provenance requirements and verification results.
+
 Branch: `codex/story-1b-local-revision-engine`.
 Base: `51ce1f83de2e060a28365bb7353a8cdc4d7fdcde`.
 Canonical theory v0.9, overall development v0.2 and Story 1B v0.1 were read in order and were not changed.

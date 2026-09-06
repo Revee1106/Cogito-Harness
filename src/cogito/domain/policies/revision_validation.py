@@ -30,6 +30,9 @@ def revision_issues(transaction, objects, relations, history) -> tuple[str, ...]
             value = created.get(event.payload["object_id"])
             if not isinstance(value, snapshots[event.event_type]):
                 issues.append("creation history must reference its actual CREATE")
+            elif (isinstance(value, Hypothesis) and (value.disconfirming_condition or "").strip()
+                  and "disconfirming_condition" not in event.payload):
+                issues.append("Hypothesis CREATE must persist its disconfirming condition snapshot")
             elif (isinstance(value, Hypothesis) and "disconfirming_condition" in event.payload
                   and event.payload["disconfirming_condition"] != value.disconfirming_condition):
                 issues.append("condition snapshot must equal the created Hypothesis condition")

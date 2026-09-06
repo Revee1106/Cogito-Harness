@@ -76,10 +76,12 @@ def artifact_state():
     return s
 
 
-def test_versioned_artifact_requires_identity_and_order():
+def test_versioned_artifact_identity_and_proposal_order_are_not_sufficient():
     args = dict(temporal_basis="VERSIONED_ARTIFACT_SUCCESSION", artifact_identity="config/db",
                 old_version=17,replacement_version=18)
-    assert evaluate(artifact_state(),**args).status == "MATERIAL_CHANGE"
+    result = evaluate(artifact_state(),**args)
+    assert result.status == "DEFERRED"
+    assert result.reason_codes == ("VERSION_PROVENANCE_INSUFFICIENT",)
     assert evaluate(artifact_state(),**{**args,"replacement_version":16}).status == "DEFERRED"
     assert evaluate(artifact_state(),**{**args,"artifact_identity":"other"}).status == "DEFERRED"
     assert evaluate(artifact_state(),temporal_basis="VERSIONED_ARTIFACT_SUCCESSION").status == "DEFERRED"

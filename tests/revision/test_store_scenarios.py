@@ -17,10 +17,10 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def seeded_store(path, *, ambiguous=False, snapshot=True):
+def seeded_store(path, *, ambiguous=False, source_state=None):
     store = SQLiteCognitiveStore(path)
     store.create_schema()
-    s = state()
+    s = source_state or state()
     if ambiguous:
         s = s.model_copy(update={"facts":tuple(f.model_copy(update={"valid_from":NOW,"valid_to":NOW}) for f in s.facts)})
     run(store.create_episode(s.episode.model_copy(update={"cognitive_version":0})))
@@ -36,7 +36,7 @@ def seeded_store(path, *, ambiguous=False, snapshot=True):
                 "Hypothesis":EventType.HYPOTHESIS_CREATED,"InformationGap":EventType.GAP_OPENED,
                 "Fact":EventType.FACT_ADDED}[type(obj).__name__]
             payload = {"object_id":str(obj.id)}
-            if kind is EventType.HYPOTHESIS_CREATED and snapshot:
+            if kind is EventType.HYPOTHESIS_CREATED:
                 payload["disconfirming_condition"] = obj.disconfirming_condition
             sequence += 1
             events.append(event(kind,payload,sequence,tx=tx_id))
@@ -177,10 +177,20 @@ def test_invalid_atomic_batch_leaves_no_partial_state_or_events(tmp_path,defect)
 
 
 def test_legacy_missing_condition_snapshot_defers_without_fabrication(tmp_path):
-    store = seeded_store(tmp_path / "legacy.db",snapshot=False)
+    from cogito.application.local_revision_engine import LocalRevisionEngine
+    store = seeded_store(tmp_path / "legacy.db")
     try:
-        result = revise(store,batch(hypothesis_reject_proposals=(reject(rejection_basis="DISCONFIRMING_CONDITION_MET"),)))
+        committed = run(store.load_episode_state("ep"))
+        # Legacy read-view fixture only: do not bypass the new write invariant
+        # or rewrite persisted history to manufacture a legacy database.
+        legacy = committed.model_copy(update={"cognitive_events":tuple(
+            e.model_copy(update={"payload":{"object_id":"h1"}})
+            if e.event_type is EventType.HYPOTHESIS_CREATED else e
+            for e in committed.cognitive_events)})
+        result = LocalRevisionEngine().revise(legacy,
+            batch(hypothesis_reject_proposals=(reject(rejection_basis="DISCONFIRMING_CONDITION_MET"),)),
+            legacy.episode.cognitive_version,now=NOW)
         assert result.status == "DEFERRED" and "DISCONFIRMING_CONDITION_NOT_PRIOR" in result.reason_codes
-        assert run(store.load_episode_state("ep")).episode.cognitive_version == 2
+        assert run(store.load_episode_state("ep")) == committed
     finally:
         store.close()
