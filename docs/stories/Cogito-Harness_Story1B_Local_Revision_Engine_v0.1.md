@@ -475,13 +475,40 @@ Harness 验证 Evidence 存在、same Episode、source ACTIVE。
 
 # 22. VERSIONED_ARTIFACT_SUCCESSION
 
-至少要求：
+`VERSIONED_ARTIFACT_SUCCESSION` 是合法的 `TemporalSuccessionBasis`。Story 1B 保留其 enum、Proposal shape、Policy branch 与 reason code。
+
+> **Story 1B 冻结说明：保留能力形状，但当前 material revision 暂不可用。**
+
+当前 Domain 尚无可靠的 admitted / committed / traceable artifact-version provenance contract，无法据此证明 version values、version ordering 与 artifact identity succession。因此，通过基础目标与 Evidence 校验后，当前冻结行为为：
+
+```text
+VERSIONED_ARTIFACT_SUCCESSION
+→ DEFERRED
+→ VERSION_PROVENANCE_INSUFFICIENT
+→ transaction = None
+→ no cognitive_version increase
+```
+
+不得仅凭以下输入证明 artifact version succession：
+
+```text
+Proposal.old_version
+Proposal.replacement_version
+source_ref
+filename
+reason text
+created_at
+```
+
+这不是删除该 Basis，也不是认定其理论上非法。未来启用 material Fact Supersession 必须先有 committed、可追溯的 artifact-version provenance contract，并能证明：
 
 ```text
 same/compatible artifact identity
 explicit version ordering
 semantic layer compatible
 ```
+
+该未来启用能力不属于当前 Story 1B runtime；本 Story 不主动搜索或补造 version provenance。
 
 新版 Artifact 不自动证明 Runtime State 已改变。
 
@@ -761,13 +788,16 @@ later direct observation → supersede
 created_at alone cannot supersede
 ambiguous world time → DEFERRED
 explicit transition → supersede
-versioned artifact succession → supersede compatible artifact Fact
+proposal-only version succession → DEFERRED + VERSION_PROVENANCE_INSUFFICIENT
+missing committed version provenance → no transaction / no cognitive_version increase
 new artifact version cannot supersede runtime Fact without runtime evidence
 plain conflict → no supersede
 conflict without temporal basis → DEFERRED
 old Fact preserved as SUPERSEDED
 replacement remains ACTIVE
 ```
+
+未来 admitted version provenance 可能允许 material supersession，但不属于当前 Story 1B runtime 的成功用例。
 
 ---
 
@@ -882,6 +912,10 @@ no cognitive_version increase
 - [ ] Gap Resolution 实现；
 - [ ] Gap Resolve 不选择下一个 Gap；
 - [ ] TemporalSuccessionBasis 实现；
+- [ ] VERSIONED_ARTIFACT_SUCCESSION 保留合法 Basis shape，当前不产生 material revision；
+- [ ] 缺少 committed version provenance 时返回 DEFERRED；
+- [ ] reason = VERSION_PROVENANCE_INSUFFICIENT；
+- [ ] 该版本修订路径不创建 transaction、不增加 cognitive_version；
 - [ ] FactSupersedeProposal / Policy 实现；
 - [ ] Fact conflict 不自动 Supersede；
 - [ ] world time 与 cognitive created_at 分离；
