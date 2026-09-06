@@ -15,13 +15,14 @@ from cogito.domain.enums import (
     PropositionStatus,
 )
 from cogito.domain.models.action import ActionDecision
-from cogito.domain.models.event import CognitiveObject, CognitiveTransaction
+from cogito.domain.models.event import CognitiveEvent, CognitiveObject, CognitiveTransaction
 from cogito.domain.models.evidence import EvidenceLink
 from cogito.domain.models.fact import Fact
 from cogito.domain.models.gap import InformationGap
 from cogito.domain.models.hypothesis import Hypothesis
 from cogito.domain.models.observation import Observation, ObservedProposition
 from cogito.domain.policies.evidence import ALLOWED_RELATIONS
+from cogito.domain.policies.revision_validation import revision_issues
 
 
 OBJECT_TYPES: dict[type[object], CognitiveObjectType] = {
@@ -62,6 +63,7 @@ class CognitiveTransactionValidator:
         *,
         current_objects: tuple[CognitiveObject, ...] = (),
         current_relations: tuple[EvidenceLink, ...] = (),
+        current_events: tuple[CognitiveEvent, ...] = (),
     ) -> TransactionValidationResult:
         issues: list[tuple[AdmissionReasonCode, str]] = []
 
@@ -279,6 +281,9 @@ class CognitiveTransactionValidator:
                         "Hypothesis needs a SUPPORTS EvidenceLink targeting itself",
                     )
 
+        for issue in revision_issues(transaction, current_objects, current_relations, current_events):
+            add(AdmissionReasonCode.COGNITIVE_STRUCTURE_INVALID, issue)
+
         return TransactionValidationResult(
             valid=not issues,
             reason_codes=tuple(item[0] for item in issues),
@@ -291,11 +296,13 @@ class CognitiveTransactionValidator:
         *,
         current_objects: tuple[CognitiveObject, ...] = (),
         current_relations: tuple[EvidenceLink, ...] = (),
+        current_events: tuple[CognitiveEvent, ...] = (),
     ) -> None:
         result = self.validate(
             transaction,
             current_objects=current_objects,
             current_relations=current_relations,
+            current_events=current_events,
         )
         if not result.valid:
             raise CognitiveTransactionValidationError(result)

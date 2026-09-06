@@ -1,3 +1,6 @@
-class RevisionEngine:
-    """Story 0 boundary for future admitted local revision logic."""
+"""Compatibility name for the Story 0 application boundary; one implementation."""
+
+from cogito.application.local_revision_engine import LocalRevisionEngine
+
+RevisionEngine = LocalRevisionEngine
 
