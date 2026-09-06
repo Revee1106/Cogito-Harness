@@ -4,7 +4,7 @@ Cogito-Harness 是一个以持续认知状态更新为核心的问题求解 Harn
 
 - **Story 0：工程基线与最小内核骨架 — Complete / Frozen**
 - **Story 1A：Cognitive Admission Foundation — Complete / Frozen**
-- **Next：Story 1B Local Revision Engine — Design**
+- **Next：Story 1B Local Revision Engine — Design Frozen / Next Implementation**
 
 核心原则：
 
@@ -146,11 +146,13 @@ Interfaces → Application → Domain
 
 项目采用 single-process Modular Monolith。Application I/O 端口为 async，Domain 为同步纯模型；SQLite Adapter 内部管理 SQLAlchemy Session，且只向上层返回 Pydantic Domain Object。
 
-## 设计文档
+## Documentation
 
-- [`Cogito-Harness_理论基线_v0.8.md`](Cogito-Harness_理论基线_v0.8.md)
-- [`Cogito-Harness_总体开发文档_v0.1.md`](Cogito-Harness_总体开发文档_v0.1.md)
-- [`Cogito-Harness_Story0_工程基线与最小内核骨架_v0.1.md`](Cogito-Harness_Story0_工程基线与最小内核骨架_v0.1.md)
-- [`Cogito-Harness_Story1A_Cognitive_Admission_Foundation_v0.1.md`](Cogito-Harness_Story1A_Cognitive_Admission_Foundation_v0.1.md)
+Current canonical documents:
 
-下一阶段只进入 **Story 1B Local Revision Engine** 的设计；Story 1A 的边界保持冻结。
+- [Theory Baseline v0.9](docs/theory/Cogito-Harness_理论基线_v0.9.md)
+- [Overall Development v0.2](docs/development/Cogito-Harness_总体开发文档_v0.2.md)
+- [Story 1B: Local Revision Engine](docs/stories/Cogito-Harness_Story1B_Local_Revision_Engine_v0.1.md)
+- [Documentation Index](docs/README.md)
+
+Previous baselines and completed Story documents remain in the [documentation index](docs/README.md) for historical traceability. Story 1B is design-frozen and awaits implementation; Story 1A remains frozen.
