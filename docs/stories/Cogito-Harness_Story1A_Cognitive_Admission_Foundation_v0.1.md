@@ -2,8 +2,8 @@
 
 > 上位约束：
 >
-> - `Cogito-Harness_理论基线_v0.8.md`
-> - `Cogito-Harness_总体开发文档_v0.1.md`
+> - `docs/theory/Cogito-Harness_理论基线_v0.8.md`
+> - `docs/development/Cogito-Harness_总体开发文档_v0.1.md`
 > - Story 0 已正式冻结并合并 `main`
 
 ---

@@ -1,6 +1,6 @@
 # Cogito-Harness 总体开发文档 v0.1
 
-> 上位理论约束：`Cogito-Harness_理论基线_v0.8.md`
+> 上位理论约束：`docs/theory/Cogito-Harness_理论基线_v0.8.md`
 
 ## 1. 文档目的
 
