@@ -116,6 +116,16 @@ class SQLiteCognitiveStore:
                 .order_by(CognitiveObjectRecord.created_at, CognitiveObjectRecord.id)
             ).all()
             objects = tuple(object_from_record(item) for item in records)
+            relations = tuple(relation_from_record(item) for item in session.scalars(
+                select(CognitiveRelationRecord)
+                .where(CognitiveRelationRecord.episode_id == str(episode_id))
+                .order_by(CognitiveRelationRecord.created_at, CognitiveRelationRecord.id)
+            ).all())
+            events = tuple(event_from_record(item) for item in session.scalars(
+                select(CognitiveEventRecord)
+                .where(CognitiveEventRecord.episode_id == str(episode_id))
+                .order_by(CognitiveEventRecord.sequence)
+            ).all())
 
         facts = tuple(item for item in objects if isinstance(item, Fact))
         propositions = tuple(
@@ -136,6 +146,8 @@ class SQLiteCognitiveStore:
             focused_gap_id=focused,
             recent_observations=observations,
             recent_actions=actions,
+            evidence_links=relations,
+            cognitive_events=events,
         )
 
     async def commit_transaction(self, transaction: CognitiveTransaction) -> Episode:
@@ -162,6 +174,19 @@ class SQLiteCognitiveStore:
                         == str(transaction.episode_id)
                     )
                 ).all()
+                current_by_id = {item.id:item for item in object_records}
+                for change in transaction.object_changes:
+                    current = current_by_id.get(change.object_id)
+                    if (change.kind is ChangeKind.UPDATE and current is not None
+                            and current.object_type != change.object_type.value):
+                        raise CognitiveStoreError(
+                            f"cannot change object type from {current.object_type} to {change.object_type.value}"
+                        )
+                event_records = session.scalars(
+                    select(CognitiveEventRecord)
+                    .where(CognitiveEventRecord.episode_id == str(transaction.episode_id))
+                    .order_by(CognitiveEventRecord.sequence)
+                ).all()
                 CognitiveTransactionValidator().validate_or_raise(
                     transaction,
                     current_objects=tuple(
@@ -170,6 +195,7 @@ class SQLiteCognitiveStore:
                     current_relations=tuple(
                         relation_from_record(item) for item in relation_records
                     ),
+                    current_events=tuple(event_from_record(item) for item in event_records),
                 )
                 self._append_events(session, transaction)
                 self._apply_object_changes(session, transaction)
