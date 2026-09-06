@@ -29,3 +29,19 @@ Canonical basis: theory v0.9, overall development v0.2, Story 1B v0.1.
 - uv sync, lock check, build, architecture scan, credential scan and dependency audit.
 - Inspect diff and out-of-scope scan; no dependency changes or Story 2 implementation.
 - Commit logical batches and push only codex/story-1b-local-revision-engine.
+
+## Executed evidence
+
+- A: 19 RED cases (missing proposal/policy/state view), then 19 GREEN.
+- B: 20 RED cases (missing Reject contract), then A+B 39 GREEN.
+- C: 9 RED cases (missing Gap policy), then A-C 48 GREEN.
+- D: 22 RED cases (missing Fact policy), then A-D 70 GREEN.
+- E engine: 11 RED cases, then 81 GREEN across revision tests.
+- E validator: 39 RED cases (missing committed-history input), then 120 GREEN.
+- E SQLite/scenarios: 12 RED cases (missing hydrated relations/history), then full regression 222 GREEN.
+- Boundary hardening: four additional RED cases for obvious rejection entity/scope mismatch and superseding a batch replacement, then GREEN.
+- Compatibility/malformed payload: two RED cases plus two already-passing defensive cases, then GREEN.
+- Final full regression: 230 passed; all 90 baseline tests unchanged, 140 new tests.
+- Branch-enabled total coverage: 91.96%; branch-only: 378/454 = 83.26%.
+- Sync, lock, build, architecture, credential-pattern scan and dependency audit passed.
+- See the implementation report for reproducible commands, limits and handoff guidance.
